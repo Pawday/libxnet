@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <vector>
 
 namespace IPv4 {
 
@@ -152,6 +153,82 @@ struct HeaderView
         output.source_address = source_address_opt.value();
         output.destination_address = destination_address_opt.value();
         return output;
+    }
+
+    std::optional<uint16_t> compute_checksum() const
+    {
+        uint32_t carry_output = 0;
+        auto header_size_opt = header_size();
+        if (!header_size_opt) {
+            return std::nullopt;
+        }
+
+        uint8_t header_size = header_size_opt.value();
+        assert(header_size % sizeof(uint16_t) == 0);
+        uint8_t nb_uint16 = header_size / sizeof(uint16_t);
+        if (nb_uint16 < 10) {
+            return std::nullopt;
+        }
+
+        constexpr size_t header_checksum_u16_pos = 5;
+
+        for (size_t u16_offset = 0; u16_offset < header_checksum_u16_pos;
+             u16_offset++) {
+            size_t offset = u16_offset * sizeof(uint16_t);
+
+            auto val_opt = read_be_at<uint16_t>(offset);
+            if (!val_opt.has_value()) {
+                return std::nullopt;
+            }
+            uint16_t value = val_opt.value();
+            carry_output += value;
+        }
+
+        for (size_t u16_offset = header_checksum_u16_pos + 1;
+             u16_offset < nb_uint16;
+             u16_offset++) {
+
+            size_t offset = u16_offset * sizeof(uint16_t);
+
+            auto val_opt = read_be_at<uint16_t>(offset);
+            if (!val_opt.has_value()) {
+                return std::nullopt;
+            }
+            uint16_t value = val_opt.value();
+            carry_output += value;
+        }
+
+        uint32_t nb_carry = carry_output & 0xffff0000;
+        nb_carry >>= (sizeof(uint16_t) * 8);
+
+        uint16_t output = carry_output & 0xffff;
+        output += nb_carry;
+
+        return ~output;
+    }
+
+    bool verify_checksum() const
+    {
+        auto checksum_opt = checksum();
+        auto computed_checksum_opt = compute_checksum();
+        if (!checksum_opt.has_value() || !computed_checksum_opt.has_value()) {
+            return false;
+        }
+
+        auto comp = computed_checksum_opt.value();
+        comp = ~comp;
+        auto checksum = checksum_opt.value();
+
+        uint32_t carry_sum = comp + checksum;
+
+        uint32_t nb_carry = carry_sum & 0xffff0000;
+        nb_carry >>= (sizeof(uint16_t) * 8);
+
+        uint16_t sum = carry_sum & 0xffff;
+        sum += nb_carry;
+        sum = ~sum;
+
+        return sum == 0;
     }
 
     bool is_not_valid() const
@@ -357,7 +434,12 @@ struct PacketView
 
     bool is_not_valid() const
     {
-        if (HeaderView(m_data).is_not_valid()) {
+        HeaderView header(m_data);
+        if (header.is_not_valid()) {
+            return true;
+        }
+
+        if (!header.verify_checksum()) {
             return true;
         }
 
@@ -395,6 +477,36 @@ struct PacketView
     std::optional<uint16_t> total_size() const
     {
         return HeaderView(m_data).total_size();
+    }
+
+    std::optional<std::vector<std::byte>> clone_data() const
+    {
+        if (is_not_valid()) {
+            return std::nullopt;
+        }
+
+        auto header_size_opt = header_size();
+        auto payload_size_opt = payload_size();
+
+        if (!header_size_opt || !payload_size_opt) {
+            return std::nullopt;
+        }
+
+        size_t output_raw_packet_data_size =
+            header_size_opt.value() + payload_size_opt.value();
+
+        if (m_data.size() < output_raw_packet_data_size) {
+            return std::nullopt;
+        }
+
+        std::vector<std::byte> output;
+        output.reserve(output_raw_packet_data_size);
+
+        std::ranges::copy(
+            m_data | std::views::take(output_raw_packet_data_size),
+            std::back_inserter(output));
+
+        return output;
     }
 
   private:

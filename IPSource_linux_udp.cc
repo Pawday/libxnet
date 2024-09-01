@@ -133,18 +133,18 @@ struct IPSource::Impl
 
     std::optional<IPv4::PacketView> active_packet() const
     {
-        if (m_requests.size() == 0) {
+        if (m_packets.size() == 0) {
             return std::nullopt;
         }
-        const std::vector<std::byte> &packet_data = m_requests.front();
+        const std::vector<std::byte> &packet_data = m_packets.front();
         auto data_as_span = std::span(packet_data.data(), packet_data.size());
         return IPv4::PacketView(data_as_span);
     }
 
     void pop()
     {
-        assert(m_requests.size() != 0);
-        m_requests.pop_front();
+        assert(m_packets.size() != 0);
+        m_packets.pop_front();
     }
 
   private:
@@ -259,7 +259,7 @@ struct IPSource::Impl
                 std::back_inserter(request));
             parsed += packet_size.value();
 
-            m_requests.push_back(std::move(request));
+            m_packets.push_back(std::move(request));
         }
 
         if (parsed == 0) {
@@ -274,7 +274,7 @@ struct IPSource::Impl
     Descriptors fd;
 
     std::vector<std::byte> m_raw_ip_packets;
-    std::deque<std::vector<std::byte>> m_requests;
+    std::deque<std::vector<std::byte>> m_packets;
 
     std::optional<std::string> m_error_status = std::nullopt;
     std::vector<std::byte> m_data;
