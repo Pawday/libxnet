@@ -105,11 +105,11 @@ constexpr size_t minimal_header_size = []() {
 
 struct HeaderView
 {
-    HeaderView(std::span<const std::byte> data) : m_data(data)
+    constexpr HeaderView(std::span<const std::byte> data) : m_data(data)
     {
     }
 
-    std::optional<Header> parse() const
+    constexpr std::optional<Header> parse() const
     {
         auto header_size_opt = header_size();
         auto type_of_service_opt = type_of_service();
@@ -155,7 +155,7 @@ struct HeaderView
         return output;
     }
 
-    std::optional<uint16_t> compute_checksum() const
+    constexpr std::optional<uint16_t> compute_checksum() const
     {
         uint32_t carry_output = 0;
         auto header_size_opt = header_size();
@@ -207,7 +207,7 @@ struct HeaderView
         return ~output;
     }
 
-    bool verify_checksum() const
+    constexpr bool verify_checksum() const
     {
         auto checksum_opt = checksum();
         auto computed_checksum_opt = compute_checksum();
@@ -231,7 +231,7 @@ struct HeaderView
         return sum == 0;
     }
 
-    bool is_not_valid() const
+    constexpr bool is_not_valid() const
     {
         if (m_data.size() < 1) {
             return true;
@@ -263,7 +263,7 @@ struct HeaderView
         return false;
     }
 
-    std::optional<uint8_t> header_size() const
+    constexpr std::optional<uint8_t> header_size() const
     {
         if (is_not_valid()) {
             return std::nullopt;
@@ -273,12 +273,12 @@ struct HeaderView
         return (version_ihl & 0x0f) * sizeof(uint32_t);
     }
 
-    std::optional<uint8_t> type_of_service() const
+    constexpr std::optional<uint8_t> type_of_service() const
     {
         return read_be_at<uint8_t>(1);
     }
 
-    std::optional<uint16_t> total_size() const
+    constexpr std::optional<uint16_t> total_size() const
     {
         if (is_not_valid()) {
             return std::nullopt;
@@ -295,12 +295,12 @@ struct HeaderView
         return total_size.value();
     }
 
-    std::optional<uint16_t> identification() const
+    constexpr std::optional<uint16_t> identification() const
     {
         return read_be_at<uint16_t>(4);
     }
 
-    std::optional<uint8_t> flags() const
+    constexpr std::optional<uint8_t> flags() const
     {
         auto flags_dirty = read_be_at<uint8_t>(6);
         if (!flags_dirty.has_value()) {
@@ -314,7 +314,7 @@ struct HeaderView
         return flags;
     }
 
-    std::optional<uint16_t> fragment_offset() const
+    constexpr std::optional<uint16_t> fragment_offset() const
     {
         auto frag_offset_dirty = read_be_at<uint16_t>(6);
         if (!frag_offset_dirty.has_value()) {
@@ -326,22 +326,22 @@ struct HeaderView
         return output;
     }
 
-    std::optional<uint8_t> time_to_live() const
+    constexpr std::optional<uint8_t> time_to_live() const
     {
         return read_be_at<uint8_t>(8);
     }
 
-    std::optional<uint8_t> protocol() const
+    constexpr std::optional<uint8_t> protocol() const
     {
         return read_be_at<uint8_t>(9);
     }
 
-    std::optional<uint16_t> checksum() const
+    constexpr std::optional<uint16_t> checksum() const
     {
         return read_be_at<uint16_t>(10);
     }
 
-    std::optional<Address> source_address() const
+    constexpr std::optional<Address> source_address() const
     {
         if (is_not_valid()) {
             return std::nullopt;
@@ -358,7 +358,7 @@ struct HeaderView
         return Address(data);
     }
 
-    std::optional<Address> destination_address() const
+    constexpr std::optional<Address> destination_address() const
     {
         if (is_not_valid()) {
             return std::nullopt;
@@ -379,7 +379,7 @@ struct HeaderView
     std::span<const std::byte> m_data;
 
     template <std::unsigned_integral I>
-    std::optional<I> read_be_at(size_t offset) const
+    constexpr std::optional<I> read_be_at(size_t offset) const
     {
         if (is_not_valid()) {
             return std::nullopt;
@@ -402,7 +402,7 @@ struct HeaderView
         return output;
     }
 
-    std::optional<std::span<const std::byte>> header_data() const
+    constexpr std::optional<std::span<const std::byte>> header_data() const
     {
         if (is_not_valid()) {
             return std::nullopt;
@@ -423,16 +423,16 @@ struct HeaderView
 
 struct PacketView
 {
-    PacketView(std::span<const std::byte> data) : m_data(data)
+    constexpr PacketView(std::span<const std::byte> data) : m_data(data)
     {
     }
 
-    bool is_valid() const
+    constexpr bool is_valid() const
     {
         return !is_not_valid();
     }
 
-    bool is_not_valid() const
+    constexpr bool is_not_valid() const
     {
         HeaderView header(m_data);
         if (header.is_not_valid()) {
@@ -450,14 +450,14 @@ struct PacketView
         return false;
     }
 
-    std::optional<Header> parse_header() const
+    constexpr HeaderView header_view() const
     {
-        return HeaderView(m_data).parse();
+        return HeaderView(m_data);
     }
 
-    std::optional<std::span<const std::byte>> payload_data() const
+    constexpr std::optional<std::span<const std::byte>> payload_data() const
     {
-        auto header_size_opt = header_size();
+        auto header_size_opt = header_view().header_size();
         auto payload_size_opt = payload_size();
         if (!payload_size_opt || !header_size_opt) {
             return std::nullopt;
@@ -474,18 +474,13 @@ struct PacketView
             header_size_opt.value(), payload_size_opt.value());
     }
 
-    std::optional<uint16_t> total_size() const
-    {
-        return HeaderView(m_data).total_size();
-    }
-
-    std::optional<std::vector<std::byte>> clone_data() const
+    constexpr std::optional<std::vector<std::byte>> clone_data() const
     {
         if (is_not_valid()) {
             return std::nullopt;
         }
 
-        auto header_size_opt = header_size();
+        auto header_size_opt = header_view().header_size();
         auto payload_size_opt = payload_size();
 
         if (!header_size_opt || !payload_size_opt) {
@@ -512,15 +507,10 @@ struct PacketView
   private:
     std::span<const std::byte> m_data;
 
-    std::optional<uint16_t> header_size() const
+    constexpr std::optional<uint16_t> payload_size() const
     {
-        return HeaderView(m_data).header_size();
-    }
-
-    std::optional<uint16_t> payload_size() const
-    {
-        auto header_size_opt = header_size();
-        auto total_length_opt = total_size();
+        auto header_size_opt = header_view().header_size();
+        auto total_length_opt = header_view().total_size();
         if (!header_size_opt || !total_length_opt) {
             return std::nullopt;
         }

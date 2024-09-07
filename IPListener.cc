@@ -74,7 +74,9 @@ try {
             std::reference_wrapper<IPSource> m_src;
         } pop_g(std::ref(ip_source));
 
-        auto ip_header = packet->parse_header();
+        auto packet_header_view = packet->header_view();
+
+        auto ip_header = packet_header_view.parse();
 
         if (ip_header.has_value()) {
             std::cout << std::format("{}\n", ip_header.value());
