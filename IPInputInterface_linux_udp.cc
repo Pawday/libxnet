@@ -22,7 +22,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include "IPSource.hh"
+#include "IPInputInterface.hh"
 #include "IPv4.hh"
 
 struct Descriptors
@@ -248,7 +248,7 @@ struct IPInputInterface::Impl
                 break;
             }
 
-            auto packet_size = packet.total_size();
+            auto packet_size = packet.header_view().total_size();
             if (!packet_size) {
                 break;
             }

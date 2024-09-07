@@ -19,7 +19,7 @@
 
 #include "IPv4.hh"
 
-#include "IPSource.hh"
+#include "IPInputInterface.hh"
 
 namespace {
 std::vector<IPv4::PacketView> search_packets(std::span<const std::byte> data)
@@ -61,7 +61,7 @@ std::vector<IPv4::PacketView> search_packets(std::span<const std::byte> data)
 }
 } // namespace
 
-struct IPSource::Impl
+struct IPInputInterface::Impl
 {
     static bool pcap_init_flag;
 
@@ -83,20 +83,20 @@ struct IPSource::Impl
         return true;
     }
 
-    static Impl &cast(IPSource &s)
+    static Impl &cast(IPInputInterface &s)
     {
         return *reinterpret_cast<Impl *>(s.impl);
     }
 
-    static Impl const &cast(const IPSource &s)
+    static Impl const &cast(const IPInputInterface &s)
     {
         return *reinterpret_cast<const Impl *>(s.impl);
     }
 
     static void assert_impl()
     {
-        static_assert(alignof(Impl) <= alignof(IPSource));
-        static_assert(sizeof(Impl) <= sizeof(IPSource));
+        static_assert(alignof(Impl) <= alignof(IPInputInterface));
+        static_assert(sizeof(Impl) <= sizeof(IPInputInterface));
     }
 
     Impl(const Impl &) = delete;
@@ -217,40 +217,40 @@ struct IPSource::Impl
     pcap_t *m_pcap = nullptr;
 };
 
-bool IPSource::Impl::pcap_init_flag = false;
+bool IPInputInterface::Impl::pcap_init_flag = false;
 
-void IPSource::process()
+void IPInputInterface::process()
 {
     Impl::cast(*this).process();
 }
 
-std::optional<IPv4::PacketView> IPSource::active_packet() const
+std::optional<IPv4::PacketView> IPInputInterface::active_packet() const
 {
     return Impl::cast(*this).active_packet();
 }
 
-void IPSource::pop()
+void IPInputInterface::pop()
 {
     return Impl::cast(*this).pop();
 }
 
-IPSource::IPSource()
+IPInputInterface::IPInputInterface()
 {
-    new (impl) IPSource::Impl();
+    new (impl) IPInputInterface::Impl();
 }
 
-IPSource::IPSource(IPSource &&o)
+IPInputInterface::IPInputInterface(IPInputInterface &&o)
 {
-    new (impl) IPSource::Impl(std::move(Impl::cast(o)));
+    new (impl) IPInputInterface::Impl(std::move(Impl::cast(o)));
 }
 
-IPSource &IPSource::operator=(IPSource &&o)
+IPInputInterface &IPInputInterface::operator=(IPInputInterface &&o)
 {
     Impl::cast(*this).operator=(std::move(Impl::cast(o)));
     return *this;
 }
 
-IPSource::~IPSource()
+IPInputInterface::~IPInputInterface()
 {
     Impl::cast(*this).~Impl();
 }

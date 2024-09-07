@@ -37,7 +37,7 @@
 #include "DHCP.hh"
 #include "DHCP_formatter.hh"
 
-#include "IPSource.hh"
+#include "IPInputInterface.hh"
 #include "UDP.hh"
 
 std::atomic<bool> should_close = false;
@@ -50,7 +50,7 @@ int main(int argc, char **argv)
 try {
     signal(SIGINT, sighandler);
 
-    IPSource ip_source;
+    IPInputInterface ip_source;
 
     while (!should_close) {
 
@@ -62,7 +62,7 @@ try {
         }
         struct PopPacketRAII
         {
-            PopPacketRAII(std::reference_wrapper<IPSource> s) : m_src(s)
+            PopPacketRAII(std::reference_wrapper<IPInputInterface> s) : m_src(s)
             {
             }
             ~PopPacketRAII()
@@ -71,7 +71,7 @@ try {
             }
 
           private:
-            std::reference_wrapper<IPSource> m_src;
+            std::reference_wrapper<IPInputInterface> m_src;
         } pop_g(std::ref(ip_source));
 
         auto packet_header_view = packet->header_view();
