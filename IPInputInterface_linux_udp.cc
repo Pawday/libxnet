@@ -133,18 +133,18 @@ struct IPInputInterface::Impl
 
     std::optional<IPv4::PacketView> active_packet() const
     {
-        if (m_packets.size() == 0) {
+        if (m_raw_packets.size() == 0) {
             return std::nullopt;
         }
-        const std::vector<std::byte> &packet_data = m_packets.front();
+        const std::vector<std::byte> &packet_data = m_raw_packets.front();
         auto data_as_span = std::span(packet_data.data(), packet_data.size());
         return IPv4::PacketView(data_as_span);
     }
 
     void pop()
     {
-        assert(m_packets.size() != 0);
-        m_packets.pop_front();
+        assert(m_raw_packets.size() != 0);
+        m_raw_packets.pop_front();
     }
 
   private:
@@ -223,14 +223,13 @@ struct IPInputInterface::Impl
 
             auto readen_span = recv_buff | std::views::take(readen);
 
-            std::ranges::copy(
-                readen_span, std::back_inserter(m_raw_ip_packets));
+            std::ranges::copy(readen_span, std::back_inserter(m_capture));
         }
     }
 
     void parse_ip_packets()
     {
-        auto packets_span = std::span(m_raw_ip_packets);
+        auto packets_span = std::span(m_capture);
         if (packets_span.size() == 0) {
             return;
         }
@@ -259,7 +258,7 @@ struct IPInputInterface::Impl
                 std::back_inserter(request));
             parsed += packet_size.value();
 
-            m_packets.push_back(std::move(request));
+            m_raw_packets.push_back(std::move(request));
         }
 
         if (parsed == 0) {
@@ -267,14 +266,13 @@ struct IPInputInterface::Impl
             throw_active_status();
         }
 
-        m_raw_ip_packets.erase(
-            begin(m_raw_ip_packets), begin(m_raw_ip_packets) + parsed);
+        m_capture.erase(begin(m_capture), begin(m_capture) + parsed);
     }
 
     Descriptors fd;
 
-    std::vector<std::byte> m_raw_ip_packets;
-    std::deque<std::vector<std::byte>> m_packets;
+    std::vector<std::byte> m_capture;
+    std::deque<std::vector<std::byte>> m_raw_packets;
 
     std::optional<std::string> m_error_status = std::nullopt;
     std::vector<std::byte> m_data;

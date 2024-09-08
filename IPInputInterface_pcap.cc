@@ -189,18 +189,18 @@ struct IPInputInterface::Impl
 
     std::optional<IPv4::PacketView> active_packet() const
     {
-        if (m_packets.size() == 0) {
+        if (m_raw_packets.size() == 0) {
             return std::nullopt;
         }
-        const std::vector<std::byte> &packet_data = m_packets.front();
+        const std::vector<std::byte> &packet_data = m_raw_packets.front();
         auto data_as_span = std::span(packet_data.data(), packet_data.size());
         return IPv4::PacketView(data_as_span);
     }
 
     void pop()
     {
-        assert(m_packets.size() != 0);
-        m_packets.pop_front();
+        assert(m_raw_packets.size() != 0);
+        m_raw_packets.pop_front();
     }
 
   private:
@@ -210,10 +210,10 @@ struct IPInputInterface::Impl
         if (!packet_data.has_value()) {
             return;
         }
-        m_packets.emplace_back(std::move(packet_data.value()));
+        m_raw_packets.emplace_back(std::move(packet_data.value()));
     }
 
-    std::deque<std::vector<std::byte>> m_packets;
+    std::deque<std::vector<std::byte>> m_raw_packets;
     pcap_t *m_pcap = nullptr;
 };
 
