@@ -14,7 +14,7 @@ add_subdirectory(deps)
 
 add_executable(Main
     IPListener.cc
-    IPInputInterface_pcap.cc
+    IPInputInterface_linux_packet.cc
 )
 
 target_link_libraries(Main PRIVATE
