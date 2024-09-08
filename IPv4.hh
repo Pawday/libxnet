@@ -434,7 +434,7 @@ struct PacketView
 
     constexpr bool is_not_valid() const
     {
-        HeaderView header(m_data);
+        HeaderView header = header_view();
         if (header.is_not_valid()) {
             return true;
         }
