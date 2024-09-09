@@ -48,13 +48,7 @@ struct Address
 
     static bool equals(const Address &l, const Address &r)
     {
-        uint32_t l_val;
-        uint32_t r_val;
-
-        std::memcpy(&l_val, l.m_data.data(), sizeof(uint32_t));
-        std::memcpy(&r_val, r.m_data.data(), sizeof(uint32_t));
-
-        return l_val == r_val;
+        return l.m_data == r.m_data;
     }
 
     std::array<std::byte, 4> data_msbf() const
