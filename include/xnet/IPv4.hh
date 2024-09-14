@@ -167,7 +167,7 @@ struct HeaderView
         }
 
         uint8_t header_size = header_size_unsafe();
-        if (header_size < 20) {
+        if (header_size < minimal_header_size) {
             return true;
         }
 
