@@ -2,12 +2,12 @@
 
 #include <optional>
 
-#include "IPv4.hh"
+#include <xnet/IPv4.hh>
 
 struct IPInputInterface
 {
     void process();
-    std::optional<IPv4::PacketView> active_packet() const;
+    std::optional<xnet::IPv4::PacketView> active_packet() const;
     void pop();
 
     IPInputInterface();

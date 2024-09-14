@@ -1,12 +1,8 @@
 #pragma once
 
-#include "IPv4.hh"
 #include <algorithm>
 #include <array>
 #include <concepts>
-#include <cstddef>
-#include <cstdint>
-#include <cstring>
 #include <endian.h>
 #include <iterator>
 #include <optional>
@@ -17,6 +13,12 @@
 #include <string_view>
 #include <type_traits>
 #include <vector>
+
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+
+#include <xnet/IPv4.hh>
 
 namespace dhcp {
 
@@ -220,10 +222,10 @@ struct Header
     uint32_t xid{};
     uint16_t secs{};
     uint16_t flags{};
-    IPv4::Address ciaddr{};
-    IPv4::Address yiaddr{};
-    IPv4::Address siaddr{};
-    IPv4::Address giaddr{};
+    xnet::IPv4::Address ciaddr{};
+    xnet::IPv4::Address yiaddr{};
+    xnet::IPv4::Address siaddr{};
+    xnet::IPv4::Address giaddr{};
     ClientHardwareAddr chaddr{};
     std::array<char, 64> sname{};
     std::array<char, 128> file{};
@@ -404,22 +406,22 @@ struct HeaderView
         return read_be_at<uint16_t>(10);
     }
 
-    std::optional<IPv4::Address> ciaddr() const
+    std::optional<xnet::IPv4::Address> ciaddr() const
     {
         return read_ipv4_addr_at(12);
     }
 
-    std::optional<IPv4::Address> yiaddr() const
+    std::optional<xnet::IPv4::Address> yiaddr() const
     {
         return read_ipv4_addr_at(16);
     }
 
-    std::optional<IPv4::Address> siaddr() const
+    std::optional<xnet::IPv4::Address> siaddr() const
     {
         return read_ipv4_addr_at(20);
     }
 
-    std::optional<IPv4::Address> giaddr() const
+    std::optional<xnet::IPv4::Address> giaddr() const
     {
         return read_ipv4_addr_at(24);
     }
@@ -524,13 +526,13 @@ struct HeaderView
         return output;
     }
 
-    std::optional<IPv4::Address> read_ipv4_addr_at(size_t offset) const
+    std::optional<xnet::IPv4::Address> read_ipv4_addr_at(size_t offset) const
     {
         auto be_addr = read_be_at<uint32_t>(offset);
         if (!be_addr.has_value()) {
             return std::nullopt;
         }
-        return IPv4::Address::from_msbf(be_addr.value());
+        return xnet::IPv4::Address::from_msbf(be_addr.value());
     }
 };
 

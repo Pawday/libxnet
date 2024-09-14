@@ -5,10 +5,10 @@
 #include <cstdint>
 #include <format>
 
-#include "IPv4.hh"
+#include <xnet/IPv4.hh>
 
 template <>
-struct std::formatter<IPv4::Address, char>
+struct std::formatter<xnet::IPv4::Address, char>
 {
     template <class ParseContext>
     constexpr ParseContext::iterator parse(ParseContext &ctx)
@@ -17,7 +17,7 @@ struct std::formatter<IPv4::Address, char>
     }
 
     template <typename FmtContext>
-    auto format(const IPv4::Address &addr, FmtContext &ctx) const
+    auto format(const xnet::IPv4::Address &addr, FmtContext &ctx) const
     {
         auto output = ctx.out();
 
@@ -36,7 +36,7 @@ struct std::formatter<IPv4::Address, char>
 };
 
 template <>
-struct std::formatter<IPv4::Header, char>
+struct std::formatter<xnet::IPv4::Header, char>
 {
     template <class ParseContext>
     constexpr ParseContext::iterator parse(ParseContext &ctx)
@@ -45,7 +45,7 @@ struct std::formatter<IPv4::Header, char>
     }
 
     template <typename FmtContext>
-    auto format(const IPv4::Header &addr, FmtContext &ctx) const
+    auto format(const xnet::IPv4::Header &addr, FmtContext &ctx) const
     {
         auto output = ctx.out();
 

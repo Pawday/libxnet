@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <exception>
 #include <format>
 #include <iostream>
 #include <iterator>
@@ -17,8 +18,8 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include "DHCP.hh"
-#include "IPv4.hh"
+#include <xnet/DHCP.hh>
+#include <xnet/IPv4.hh>
 
 struct DHCPSink
 {
@@ -133,7 +134,7 @@ try {
         file_name.data(),
         std::min(file_name.size(), header.file.size()));
     header.file.back() = 0;
-    header.yiaddr = IPv4::Address::from_msbf(0377);
+    header.yiaddr = xnet::IPv4::Address::from_msbf(0377);
 
     DHCPSink s;
 

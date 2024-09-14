@@ -25,8 +25,9 @@
 
 #include <linux/if_ether.h>
 
+#include <xnet/IPv4.hh>
+
 #include "IPInputInterface.hh"
-#include "IPv4.hh"
 
 struct Descriptors
 {
@@ -134,14 +135,14 @@ struct IPInputInterface::Impl
         parse_ip_packets();
     }
 
-    std::optional<IPv4::PacketView> active_packet() const
+    std::optional<xnet::IPv4::PacketView> active_packet() const
     {
         if (m_raw_packets.size() == 0) {
             return std::nullopt;
         }
         const std::vector<std::byte> &packet_data = m_raw_packets.front();
         auto data_as_span = std::span(packet_data.data(), packet_data.size());
-        return IPv4::PacketView(data_as_span);
+        return xnet::IPv4::PacketView(data_as_span);
     }
 
     void pop()
@@ -262,7 +263,7 @@ struct IPInputInterface::Impl
 
             packet_offset = std::distance(begin(packets_span), ipv4_start);
 
-            IPv4::PacketView packet(packets_span.subspan(packet_offset));
+            xnet::IPv4::PacketView packet(packets_span.subspan(packet_offset));
             if (packet.is_valid()) {
                 break;
             }
@@ -280,7 +281,7 @@ struct IPInputInterface::Impl
                 break;
             }
 
-            IPv4::PacketView packet(packets_span);
+            xnet::IPv4::PacketView packet(packets_span);
             if (packet.is_not_valid()) {
                 break;
             }
@@ -320,7 +321,7 @@ void IPInputInterface::process()
     Impl::cast(*this).process();
 }
 
-std::optional<IPv4::PacketView> IPInputInterface::active_packet() const
+std::optional<xnet::IPv4::PacketView> IPInputInterface::active_packet() const
 {
     return Impl::cast(*this).active_packet();
 }

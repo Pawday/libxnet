@@ -6,7 +6,7 @@ project(BootServer)
 set(CMAKE_LINK_LIBRARIES_ONLY_TARGETS ON)
 
 add_library(xnet.headers INTERFACE)
-target_include_directories(xnet.headers INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(xnet.headers INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_features(xnet.headers INTERFACE cxx_std_20)
 
 add_subdirectory(tests)

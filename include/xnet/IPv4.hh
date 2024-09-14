@@ -15,7 +15,7 @@
 #include <cstring>
 #include <vector>
 
-namespace IPv4 {
+namespace xnet::IPv4 {
 
 struct Address
 {
@@ -525,4 +525,4 @@ struct PacketView
         return total_length - header_size;
     }
 };
-} // namespace IPv4
+} // namespace xnet::IPv4
