@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.23)
 
-
-project(BootServer)
+project(libxnet)
 
 set(CMAKE_LINK_LIBRARIES_ONLY_TARGETS ON)
 
