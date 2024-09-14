@@ -8,12 +8,12 @@
 #include <ranges>
 #include <span>
 #include <string>
+#include <vector>
 
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <vector>
 
 namespace xnet::IPv4 {
 
