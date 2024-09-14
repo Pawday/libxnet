@@ -105,124 +105,53 @@ struct HeaderView
 
     constexpr std::optional<Header> parse() const
     {
-        auto header_size_opt = header_size();
-        auto type_of_service_opt = type_of_service();
-        auto total_size_opt = total_size();
-        auto identification_opt = identification();
-        auto flags_opt = flags();
-        auto fragment_offset_opt = fragment_offset();
-        auto time_to_live_opt = time_to_live();
-        auto protocol_opt = protocol();
-        auto checksum_opt = checksum();
-        auto source_address_opt = source_address();
-        auto destination_address_opt = destination_address();
-
-        bool parsed = true;
-        parsed = parsed && header_size_opt.has_value();
-        parsed = parsed && type_of_service_opt.has_value();
-        parsed = parsed && total_size_opt.has_value();
-        parsed = parsed && identification_opt.has_value();
-        parsed = parsed && flags_opt.has_value();
-        parsed = parsed && fragment_offset_opt.has_value();
-        parsed = parsed && time_to_live_opt.has_value();
-        parsed = parsed && protocol_opt.has_value();
-        parsed = parsed && checksum_opt.has_value();
-        parsed = parsed && source_address_opt.has_value();
-        parsed = parsed && destination_address_opt.has_value();
-
-        if (!parsed) {
+        if (is_not_valid()) {
             return std::nullopt;
         }
 
+        auto header_size_opt = header_size_unsafe();
+        auto type_of_service_opt = type_of_service_unsafe();
+        auto total_size_opt = total_size_unsafe();
+        auto identification_opt = identification_unsafe();
+        auto flags_opt = flags_unsafe();
+        auto fragment_offset_opt = fragment_offset_unsafe();
+        auto time_to_live_opt = time_to_live_unsafe();
+        auto protocol_opt = protocol_unsafe();
+        auto checksum_opt = checksum_unsafe();
+        auto source_address_opt = source_address_unsafe();
+        auto destination_address_opt = destination_address_unsafe();
+
         Header output;
-        output.header_size = header_size_opt.value();
-        output.type_of_service = type_of_service_opt.value();
-        output.total_size = total_size_opt.value();
-        output.identification = identification_opt.value();
-        output.flags = flags_opt.value();
-        output.fragment_offset = fragment_offset_opt.value();
-        output.time_to_live = time_to_live_opt.value();
-        output.protocol = protocol_opt.value();
-        output.checksum = checksum_opt.value();
-        output.source_address = source_address_opt.value();
-        output.destination_address = destination_address_opt.value();
+        output.header_size = header_size_opt;
+        output.type_of_service = type_of_service_opt;
+        output.total_size = total_size_opt;
+        output.identification = identification_opt;
+        output.flags = flags_opt;
+        output.fragment_offset = fragment_offset_opt;
+        output.time_to_live = time_to_live_opt;
+        output.protocol = protocol_opt;
+        output.checksum = checksum_opt;
+        output.source_address = source_address_opt;
+        output.destination_address = destination_address_opt;
         return output;
     }
 
     constexpr std::optional<uint16_t> compute_checksum() const
     {
-        uint32_t carry_output = 0;
-        auto header_size_opt = header_size();
-        if (!header_size_opt) {
+        if (is_not_valid()) {
             return std::nullopt;
         }
 
-        uint8_t header_size = header_size_opt.value();
-        assert(header_size % sizeof(uint16_t) == 0);
-        uint8_t nb_uint16 = header_size / sizeof(uint16_t);
-        if (nb_uint16 < 10) {
-            return std::nullopt;
-        }
-
-        constexpr size_t header_checksum_u16_pos = 5;
-
-        for (size_t u16_offset = 0; u16_offset < header_checksum_u16_pos;
-             u16_offset++) {
-            size_t offset = u16_offset * sizeof(uint16_t);
-
-            auto val_opt = read_be_at<uint16_t>(offset);
-            if (!val_opt.has_value()) {
-                return std::nullopt;
-            }
-            uint16_t value = val_opt.value();
-            carry_output += value;
-        }
-
-        for (size_t u16_offset = header_checksum_u16_pos + 1;
-             u16_offset < nb_uint16;
-             u16_offset++) {
-
-            size_t offset = u16_offset * sizeof(uint16_t);
-
-            auto val_opt = read_be_at<uint16_t>(offset);
-            if (!val_opt.has_value()) {
-                return std::nullopt;
-            }
-            uint16_t value = val_opt.value();
-            carry_output += value;
-        }
-
-        uint32_t nb_carry = carry_output & 0xffff0000;
-        nb_carry >>= (sizeof(uint16_t) * 8);
-
-        uint16_t output = carry_output & 0xffff;
-        output += nb_carry;
-
-        return ~output;
+        return compute_checksum_unsafe();
     }
 
     constexpr bool verify_checksum() const
     {
-        auto checksum_opt = checksum();
-        auto computed_checksum_opt = compute_checksum();
-        if (!checksum_opt.has_value() || !computed_checksum_opt.has_value()) {
+        if (is_not_valid()) {
             return false;
         }
 
-        auto comp = computed_checksum_opt.value();
-        comp = ~comp;
-        auto checksum = checksum_opt.value();
-
-        uint32_t carry_sum = comp + checksum;
-
-        uint32_t nb_carry = carry_sum & 0xffff0000;
-        nb_carry >>= (sizeof(uint16_t) * 8);
-
-        uint16_t sum = carry_sum & 0xffff;
-        sum += nb_carry;
-        sum = ~sum;
-
-        return sum == 0;
+        return verify_checksum_unsafe();
     }
 
     constexpr bool is_not_valid() const
@@ -237,20 +166,25 @@ struct HeaderView
             return true;
         }
 
-        uint8_t header_size = (version_ihl & 0x0f) * sizeof(uint32_t);
+        uint8_t header_size = header_size_unsafe();
         if (header_size < 20) {
             return true;
         }
 
-        constexpr uint8_t max_header_size = 0b1111 * sizeof(uint32_t);
+        constexpr uint8_t max_header_size = header_size_mask * sizeof(uint32_t);
         if (header_size > max_header_size) {
             assert(
                 false &&
-                "IHL cannot be greater then 0b1111 * sizeof(uint32_t)");
+                "IHL cannot be greater then "
+                "header_size_mask sizeof(uint32_t)");
             return true;
         }
 
         if (m_data.size() < header_size) {
+            return true;
+        }
+
+        if (!verify_checksum_unsafe()) {
             return true;
         }
 
@@ -263,13 +197,16 @@ struct HeaderView
             return std::nullopt;
         }
 
-        uint8_t version_ihl = std::to_integer<uint8_t>(m_data[0]);
-        return (version_ihl & 0x0f) * sizeof(uint32_t);
+        return header_size_unsafe();
     }
 
     constexpr std::optional<uint8_t> type_of_service() const
     {
-        return read_be_at<uint8_t>(1);
+        if (is_not_valid()) {
+            return std::nullopt;
+        }
+
+        return type_of_service_unsafe();
     }
 
     constexpr std::optional<uint16_t> total_size() const
@@ -278,61 +215,57 @@ struct HeaderView
             return std::nullopt;
         }
 
-        auto total_size = read_be_at<uint16_t>(2);
-        if (!total_size) {
-            return std::nullopt;
-        }
-        if (total_size.value() > m_data.size()) {
+        auto total_size = total_size_unsafe();
+        if (total_size > m_data.size()) {
             return std::nullopt;
         }
 
-        return total_size.value();
-    }
-
-    constexpr std::optional<uint16_t> identification() const
-    {
-        return read_be_at<uint16_t>(4);
+        return total_size;
     }
 
     constexpr std::optional<uint8_t> flags() const
     {
-        auto flags_dirty = read_be_at<uint8_t>(6);
-        if (!flags_dirty.has_value()) {
+        if (is_not_valid()) {
             return std::nullopt;
         }
 
-        uint8_t flags = flags_dirty.value();
-        flags &= 0b11100000;
-        flags >>= 5;
-        flags &= 0b00000111;
-        return flags;
+        return flags_unsafe();
     }
 
     constexpr std::optional<uint16_t> fragment_offset() const
     {
-        auto frag_offset_dirty = read_be_at<uint16_t>(6);
-        if (!frag_offset_dirty.has_value()) {
+        if (is_not_valid()) {
             return std::nullopt;
         }
 
-        uint16_t output = frag_offset_dirty.value();
-        output &= uint16_t(0b0001111111111111);
-        return output;
+        return fragment_offset_unsafe();
     }
 
     constexpr std::optional<uint8_t> time_to_live() const
     {
-        return read_be_at<uint8_t>(8);
+        if (is_not_valid()) {
+            return std::nullopt;
+        }
+
+        return time_to_live_unsafe();
     }
 
     constexpr std::optional<uint8_t> protocol() const
     {
-        return read_be_at<uint8_t>(9);
+        if (is_not_valid()) {
+            return std::nullopt;
+        }
+
+        return protocol_unsafe();
     }
 
     constexpr std::optional<uint16_t> checksum() const
     {
-        return read_be_at<uint16_t>(10);
+        if (is_not_valid()) {
+            return std::nullopt;
+        }
+
+        return checksum_unsafe();
     }
 
     constexpr std::optional<Address> source_address() const
@@ -341,15 +274,7 @@ struct HeaderView
             return std::nullopt;
         }
 
-        auto H = header_data();
-        if (!H) {
-            return std::nullopt;
-        }
-
-        auto addr_data = H.value().subspan(12, 4);
-        std::array<std::byte, 4> data{};
-        std::ranges::copy(addr_data, data.begin());
-        return Address(data);
+        return source_address_unsafe();
     }
 
     constexpr std::optional<Address> destination_address() const
@@ -358,33 +283,18 @@ struct HeaderView
             return std::nullopt;
         }
 
-        auto H = header_data();
-        if (!H) {
-            return std::nullopt;
-        }
-
-        auto addr_data = H.value().subspan(16, 4);
-        std::array<std::byte, 4> data{};
-        std::ranges::copy(addr_data, data.begin());
-        return Address(data);
+        return destination_address_unsafe();
     }
 
   private:
+    static constexpr uint8_t header_size_mask = 0b1111;
+
     std::span<const std::byte> m_data;
 
     template <std::unsigned_integral I>
-    constexpr std::optional<I> read_be_at(size_t offset) const
+    constexpr I read_be_at_unsafe(size_t offset) const
     {
-        if (is_not_valid()) {
-            return std::nullopt;
-        }
-
-        auto header_opt = header_data();
-        if (!header_opt) {
-            return std::nullopt;
-        }
-
-        auto output_data = header_opt.value().subspan(offset, sizeof(I));
+        auto output_data = header_data_unsafe().subspan(offset, sizeof(I));
 
         I output = 0;
         for (std::byte b : output_data) {
@@ -396,22 +306,146 @@ struct HeaderView
         return output;
     }
 
+    constexpr bool verify_checksum_unsafe() const
+    {
+        auto comp = compute_checksum_unsafe();
+        comp = ~comp;
+        auto checksum = checksum_unsafe();
+
+        uint32_t carry_sum = comp + checksum;
+
+        uint32_t nb_carry = carry_sum & 0xffff0000;
+        nb_carry >>= (sizeof(uint16_t) * 8);
+
+        uint16_t sum = carry_sum & 0xffff;
+        sum += nb_carry;
+        sum = ~sum;
+
+        return sum == 0;
+    }
+
+    constexpr uint8_t header_size_unsafe() const
+    {
+        uint8_t version_ihl = to_integer<uint8_t>(m_data[0]);
+        return (version_ihl & header_size_mask) * sizeof(uint32_t);
+    }
+
+    constexpr uint8_t type_of_service_unsafe() const
+    {
+        return read_be_at_unsafe<uint8_t>(1);
+    }
+
+    constexpr uint16_t total_size_unsafe() const
+    {
+        return read_be_at_unsafe<uint16_t>(2);
+    }
+
+    constexpr uint8_t flags_unsafe() const
+    {
+        uint8_t flags = read_be_at_unsafe<uint8_t>(6);
+        flags &= 0b11100000;
+        flags >>= 5;
+        flags &= 0b00000111;
+        return flags;
+    }
+
+    constexpr uint16_t fragment_offset_unsafe() const
+    {
+        uint16_t output = read_be_at_unsafe<uint16_t>(6);
+        output &= uint16_t(0b0001111111111111);
+        return output;
+    }
+
+    constexpr uint8_t time_to_live_unsafe() const
+    {
+        return read_be_at_unsafe<uint8_t>(8);
+    }
+
+    constexpr uint8_t protocol_unsafe() const
+    {
+        return read_be_at_unsafe<uint8_t>(9);
+    }
+
+    constexpr uint16_t checksum_unsafe() const
+    {
+        return read_be_at_unsafe<uint16_t>(10);
+    }
+
+    constexpr Address source_address_unsafe() const
+    {
+        auto H = header_data_unsafe();
+        auto addr_data = H.subspan(12, 4);
+        std::array<std::byte, 4> data{};
+        std::ranges::copy(addr_data, data.begin());
+        return Address(data);
+    }
+
+    constexpr Address destination_address_unsafe() const
+    {
+        auto H = header_data_unsafe();
+        auto addr_data = H.subspan(16, 4);
+        std::array<std::byte, 4> data{};
+        std::ranges::copy(addr_data, data.begin());
+        return Address(data);
+    }
+
+    constexpr std::optional<uint16_t> identification() const
+    {
+        if (is_not_valid()) {
+            return std::nullopt;
+        }
+        return identification_unsafe();
+    }
+
+    constexpr uint16_t identification_unsafe() const
+    {
+        return read_be_at_unsafe<uint16_t>(4);
+    }
+
     constexpr std::optional<std::span<const std::byte>> header_data() const
     {
         if (is_not_valid()) {
             return std::nullopt;
         }
+        return header_data_unsafe();
+    }
 
-        auto size = header_size();
-        if (!size) {
-            return std::nullopt;
+    constexpr std::span<const std::byte> header_data_unsafe() const
+    {
+        auto size = header_size_unsafe();
+        return m_data.subspan(0, size);
+    }
+
+    constexpr uint16_t compute_checksum_unsafe() const
+    {
+        uint32_t carry_output = 0;
+        uint8_t header_size = header_size_unsafe();
+        assert(header_size % sizeof(uint16_t) == 0);
+        uint8_t nb_uint16 = header_size / sizeof(uint16_t);
+
+        constexpr size_t header_checksum_u16_pos = 5;
+
+        for (size_t u16_offset = 0; u16_offset < header_checksum_u16_pos;
+             u16_offset++) {
+            size_t offset = u16_offset * sizeof(uint16_t);
+            carry_output += read_be_at_unsafe<uint16_t>(offset);
         }
 
-        if (m_data.size() < size.value()) {
-            return std::nullopt;
+        for (size_t u16_offset = header_checksum_u16_pos + 1;
+             u16_offset < nb_uint16;
+             u16_offset++) {
+
+            size_t offset = u16_offset * sizeof(uint16_t);
+            carry_output += read_be_at_unsafe<uint16_t>(offset);
         }
 
-        return m_data.subspan(0, size.value());
+        uint32_t nb_carry = carry_output & 0xffff0000;
+        nb_carry >>= (sizeof(uint16_t) * 8);
+
+        uint16_t output = carry_output & 0xffff;
+        output += nb_carry;
+
+        return ~output;
     }
 };
 
@@ -430,10 +464,6 @@ struct PacketView
     {
         HeaderView header = header_view();
         if (header.is_not_valid()) {
-            return true;
-        }
-
-        if (!header.verify_checksum()) {
             return true;
         }
 
@@ -464,8 +494,7 @@ struct PacketView
             return std::nullopt;
         }
 
-        return m_data.subspan(
-            header_size_opt.value(), payload_size_opt.value());
+        return m_data.subspan(header_size, payload_size);
     }
 
     constexpr std::optional<std::vector<std::byte>> clone_data() const
