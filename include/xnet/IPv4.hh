@@ -15,11 +15,13 @@
 #include <cstdint>
 #include <cstring>
 
+#include <xnet/ByteOrder.hh>
+
 namespace xnet::IPv4 {
 
 struct Address
 {
-    static Address from_msbf(uint32_t addr)
+    static constexpr Address from_msbf(uint32_t addr)
     {
         std::array<uint8_t, 4> m_data{};
 
@@ -34,19 +36,23 @@ struct Address
         return Address(m_data);
     }
 
-    Address() = default;
+    constexpr Address() = default;
 
-    Address(std::array<std::byte, 4> data) : m_data(data) {};
-    Address(std::array<uint8_t, 4> data)
+    constexpr Address(std::array<std::byte, 4> data) : m_data(data) {};
+    constexpr Address(std::array<uint8_t, 4> data)
         : Address([data]() {
               std::array<std::byte, 4> out{};
               auto make_byte = [](uint8_t b) { return std::byte(b); };
               std::ranges::copy(
                   data | std::views::transform(make_byte), std::begin(out));
-              return out;
+              return Address(out);
           }()) {};
+    constexpr Address(uint8_t b0, uint8_t b1, uint8_t b2, uint8_t b3)
+        : Address(std::array<uint8_t, 4>{b0, b1, b2, b3})
+    {
+    }
 
-    static bool equals(const Address &l, const Address &r)
+    static constexpr bool equals(const Address &l, const Address &r)
     {
         return l.m_data == r.m_data;
     }
@@ -60,7 +66,7 @@ struct Address
     std::array<std::byte, 4> m_data{};
 };
 
-inline bool operator==(const Address &l, const Address &r)
+constexpr bool operator==(const Address &l, const Address &r)
 {
     return Address::equals(l, r);
 }
@@ -71,8 +77,8 @@ struct Header
     uint8_t type_of_service;
     uint16_t total_size;
     uint16_t identification;
-    uint8_t flags;
-    uint16_t fragment_offset;
+    uint8_t flags : 3;
+    uint16_t fragment_offset : 13;
     uint8_t time_to_live;
     uint8_t protocol;
     uint16_t checksum;
@@ -97,6 +103,41 @@ constexpr size_t minimal_header_size = []() {
     return output_bits / 8;
 }();
 
+constexpr std::array<std::byte, minimal_header_size> serialize(const Header &h)
+{
+    uint8_t proto_header_size = h.header_size / sizeof(uint32_t);
+    uint8_t ver_ihl = 0b01000000;
+    ver_ihl |= proto_header_size;
+
+    uint16_t flags_fragm_val = h.flags;
+    // 0b0000000000000xxx -> 0bxxx0000000000000
+    flags_fragm_val <<= 13;
+    flags_fragm_val &= 0b1110000000000000;
+    flags_fragm_val |= h.fragment_offset;
+
+    std::array<std::byte, minimal_header_size> output{};
+    uint16_t write_offset = 0;
+
+    auto write_array =
+        [&output, &write_offset]<size_t S>(const std::array<std::byte, S> &a) {
+            std::copy(a.begin(), a.end(), output.begin() + write_offset);
+            write_offset += a.size();
+        };
+
+    write_array(htobe<uint8_t>(ver_ihl));
+    write_array(htobe<uint8_t>(h.type_of_service));
+    write_array(htobe<uint16_t>(h.total_size));
+    write_array(htobe<uint16_t>(h.identification));
+    write_array(htobe<uint16_t>(flags_fragm_val));
+    write_array(htobe<uint8_t>(h.time_to_live));
+    write_array(htobe<uint8_t>(h.protocol));
+    write_array(htobe<uint16_t>(h.checksum));
+    write_array(h.source_address.data_msbf());
+    write_array(h.destination_address.data_msbf());
+
+    return output;
+}
+
 struct HeaderView
 {
     constexpr HeaderView(std::span<const std::byte> data) : m_data(data)
@@ -105,34 +146,34 @@ struct HeaderView
 
     constexpr std::optional<Header> parse() const
     {
-        if (is_not_valid()) {
+        if (is_not_safe_to_parse()) {
             return std::nullopt;
         }
 
-        auto header_size_opt = header_size_unsafe();
-        auto type_of_service_opt = type_of_service_unsafe();
-        auto total_size_opt = total_size_unsafe();
-        auto identification_opt = identification_unsafe();
-        auto flags_opt = flags_unsafe();
-        auto fragment_offset_opt = fragment_offset_unsafe();
-        auto time_to_live_opt = time_to_live_unsafe();
-        auto protocol_opt = protocol_unsafe();
-        auto checksum_opt = checksum_unsafe();
-        auto source_address_opt = source_address_unsafe();
-        auto destination_address_opt = destination_address_unsafe();
+        auto header_size = header_size_unsafe();
+        auto type_of_service = type_of_service_unsafe();
+        auto total_size = total_size_unsafe();
+        auto identification = identification_unsafe();
+        auto flags = flags_unsafe();
+        auto fragment_offset = fragment_offset_unsafe();
+        auto time_to_live = time_to_live_unsafe();
+        auto protocol = protocol_unsafe();
+        auto checksum = checksum_unsafe();
+        auto source_address = source_address_unsafe();
+        auto destination_address = destination_address_unsafe();
 
         Header output;
-        output.header_size = header_size_opt;
-        output.type_of_service = type_of_service_opt;
-        output.total_size = total_size_opt;
-        output.identification = identification_opt;
-        output.flags = flags_opt;
-        output.fragment_offset = fragment_offset_opt;
-        output.time_to_live = time_to_live_opt;
-        output.protocol = protocol_opt;
-        output.checksum = checksum_opt;
-        output.source_address = source_address_opt;
-        output.destination_address = destination_address_opt;
+        output.header_size = header_size;
+        output.type_of_service = type_of_service;
+        output.total_size = total_size;
+        output.identification = identification;
+        output.flags = flags;
+        output.fragment_offset = fragment_offset;
+        output.time_to_live = time_to_live;
+        output.protocol = protocol;
+        output.checksum = checksum;
+        output.source_address = source_address;
+        output.destination_address = destination_address;
         return output;
     }
 
@@ -154,9 +195,23 @@ struct HeaderView
         return verify_checksum_unsafe();
     }
 
-    constexpr bool is_not_valid() const
+    constexpr bool is_not_safe_to_parse() const
     {
         if (m_data.size() < 1) {
+            return true;
+        }
+
+        uint8_t header_size = header_size_unsafe();
+        if (m_data.size() < header_size) {
+            return true;
+        }
+
+        return false;
+    }
+
+    constexpr bool is_not_valid() const
+    {
+        if (is_not_safe_to_parse()) {
             return true;
         }
 
@@ -180,10 +235,6 @@ struct HeaderView
             return true;
         }
 
-        if (m_data.size() < header_size) {
-            return true;
-        }
-
         if (!verify_checksum_unsafe()) {
             return true;
         }
@@ -193,7 +244,7 @@ struct HeaderView
 
     constexpr std::optional<uint8_t> header_size() const
     {
-        if (is_not_valid()) {
+        if (is_not_safe_to_parse()) {
             return std::nullopt;
         }
 
@@ -202,7 +253,7 @@ struct HeaderView
 
     constexpr std::optional<uint8_t> type_of_service() const
     {
-        if (is_not_valid()) {
+        if (is_not_safe_to_parse()) {
             return std::nullopt;
         }
 
@@ -211,7 +262,7 @@ struct HeaderView
 
     constexpr std::optional<uint16_t> total_size() const
     {
-        if (is_not_valid()) {
+        if (is_not_safe_to_parse()) {
             return std::nullopt;
         }
 
@@ -225,7 +276,7 @@ struct HeaderView
 
     constexpr std::optional<uint8_t> flags() const
     {
-        if (is_not_valid()) {
+        if (is_not_safe_to_parse()) {
             return std::nullopt;
         }
 
@@ -234,7 +285,7 @@ struct HeaderView
 
     constexpr std::optional<uint16_t> fragment_offset() const
     {
-        if (is_not_valid()) {
+        if (is_not_safe_to_parse()) {
             return std::nullopt;
         }
 
@@ -243,7 +294,7 @@ struct HeaderView
 
     constexpr std::optional<uint8_t> time_to_live() const
     {
-        if (is_not_valid()) {
+        if (is_not_safe_to_parse()) {
             return std::nullopt;
         }
 
@@ -252,7 +303,7 @@ struct HeaderView
 
     constexpr std::optional<uint8_t> protocol() const
     {
-        if (is_not_valid()) {
+        if (is_not_safe_to_parse()) {
             return std::nullopt;
         }
 
@@ -261,7 +312,7 @@ struct HeaderView
 
     constexpr std::optional<uint16_t> checksum() const
     {
-        if (is_not_valid()) {
+        if (is_not_safe_to_parse()) {
             return std::nullopt;
         }
 
@@ -270,7 +321,7 @@ struct HeaderView
 
     constexpr std::optional<Address> source_address() const
     {
-        if (is_not_valid()) {
+        if (is_not_safe_to_parse()) {
             return std::nullopt;
         }
 
@@ -279,31 +330,34 @@ struct HeaderView
 
     constexpr std::optional<Address> destination_address() const
     {
-        if (is_not_valid()) {
+        if (is_not_safe_to_parse()) {
             return std::nullopt;
         }
 
         return destination_address_unsafe();
     }
 
+    constexpr std::optional<std::span<const std::byte>> header_data() const
+    {
+        if (is_not_safe_to_parse()) {
+            return std::nullopt;
+        }
+        return header_data_unsafe();
+    }
+
   private:
-    static constexpr uint8_t header_size_mask = 0b1111;
+    static constexpr uint8_t header_size_mask = 0b00001111;
 
     std::span<const std::byte> m_data;
 
     template <std::unsigned_integral I>
     constexpr I read_be_at_unsafe(size_t offset) const
     {
-        auto output_data = header_data_unsafe().subspan(offset, sizeof(I));
-
-        I output = 0;
-        for (std::byte b : output_data) {
-            if constexpr (sizeof(I) != 1) {
-                output <<= 8;
-            }
-            output |= std::to_integer<I>(b);
-        }
-        return output;
+        std::array<std::byte, sizeof(I)> output_data{};
+        std::ranges::copy(
+            header_data_unsafe().subspan(offset, sizeof(I)),
+            output_data.begin());
+        return betoh<I>(output_data);
     }
 
     constexpr bool verify_checksum_unsafe() const
@@ -391,7 +445,7 @@ struct HeaderView
 
     constexpr std::optional<uint16_t> identification() const
     {
-        if (is_not_valid()) {
+        if (is_not_safe_to_parse()) {
             return std::nullopt;
         }
         return identification_unsafe();
@@ -400,14 +454,6 @@ struct HeaderView
     constexpr uint16_t identification_unsafe() const
     {
         return read_be_at_unsafe<uint16_t>(4);
-    }
-
-    constexpr std::optional<std::span<const std::byte>> header_data() const
-    {
-        if (is_not_valid()) {
-            return std::nullopt;
-        }
-        return header_data_unsafe();
     }
 
     constexpr std::span<const std::byte> header_data_unsafe() const

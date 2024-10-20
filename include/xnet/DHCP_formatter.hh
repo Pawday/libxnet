@@ -15,7 +15,7 @@
 #include "DHCP.hh"
 
 template <>
-struct std::formatter<dhcp::OperationCode, char>
+struct std::formatter<xnet::dhcp::OperationCode, char>
 {
     template <class ParseContext>
     constexpr ParseContext::iterator parse(ParseContext &ctx)
@@ -25,12 +25,12 @@ struct std::formatter<dhcp::OperationCode, char>
 
     template <typename FmtContext>
     constexpr auto
-        format(const dhcp::OperationCode &code, FmtContext &ctx) const
+        format(const xnet::dhcp::OperationCode &code, FmtContext &ctx) const
     {
         auto output = ctx.out();
 
         switch (code) {
-            using enum dhcp::OperationCode;
+            using enum xnet::dhcp::OperationCode;
         case BOOTREQUEST:
             return std::format_to(output, "BOOTREQUEST");
         case BOOTREPLY:
@@ -42,7 +42,7 @@ struct std::formatter<dhcp::OperationCode, char>
 };
 
 template <>
-struct std::formatter<dhcp::ClientHardwareAddr, char>
+struct std::formatter<xnet::dhcp::ClientHardwareAddr, char>
 {
     template <class ParseContext>
     constexpr ParseContext::iterator parse(ParseContext &ctx)
@@ -51,7 +51,7 @@ struct std::formatter<dhcp::ClientHardwareAddr, char>
     }
 
     template <typename FmtContext>
-    auto format(const dhcp::ClientHardwareAddr &addr, FmtContext &ctx) const
+    auto format(const xnet::dhcp::ClientHardwareAddr &addr, FmtContext &ctx) const
     {
         auto output = ctx.out();
 
@@ -72,7 +72,7 @@ struct std::formatter<dhcp::ClientHardwareAddr, char>
 };
 
 template <>
-struct std::formatter<dhcp::Header, char>
+struct std::formatter<xnet::dhcp::Header, char>
 {
     template <class ParseContext>
     constexpr ParseContext::iterator parse(ParseContext &ctx)
@@ -81,14 +81,14 @@ struct std::formatter<dhcp::Header, char>
     }
 
     template <typename FmtContext>
-    auto format(const dhcp::Header /* not & */ header, FmtContext &ctx) const
+    auto format(const xnet::dhcp::Header /* not & */ header, FmtContext &ctx) const
     {
         auto output = ctx.out();
 
         constexpr size_t sname_data_size =
-            std_array_size_v<decltype(dhcp::Header::sname)>;
+            std_array_size_v<decltype(xnet::dhcp::Header::sname)>;
         constexpr size_t file_data_size =
-            std_array_size_v<decltype(dhcp::Header::file)>;
+            std_array_size_v<decltype(xnet::dhcp::Header::file)>;
 
         constexpr size_t sname_data_string_size =
             sname_data_size * (sizeof("xx") - 1) /* each byte as string */

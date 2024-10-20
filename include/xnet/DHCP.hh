@@ -20,7 +20,7 @@
 
 #include <xnet/IPv4.hh>
 
-namespace dhcp {
+namespace xnet::dhcp {
 
 inline constexpr size_t header_size = []() {
     size_t output = 0;
@@ -40,48 +40,6 @@ inline constexpr size_t header_size = []() {
     output += 128; // Boot file name
     return output;
 }();
-
-template <std::unsigned_integral I>
-constexpr auto htobe(std::type_identity_t<I> n)
-{
-    std::array<std::byte, sizeof(I)> output;
-    if constexpr (sizeof(I) == 1) {
-        output[0] = std::byte(n);
-        return output;
-    }
-
-    for (uint8_t byte_idx = 0; byte_idx < sizeof(I); byte_idx++) {
-        size_t shift_size = (sizeof(I) - 1 - byte_idx) * 8;
-        I mask = 0xff;
-        mask <<= shift_size;
-        I val = n & mask;
-        val >>= shift_size;
-        output[byte_idx] = std::byte(val);
-    }
-
-    return output;
-}
-
-template <std::unsigned_integral I>
-constexpr auto htole(std::type_identity_t<I> n)
-{
-    std::array<std::byte, sizeof(I)> output;
-    if constexpr (sizeof(I) == 1) {
-        output[0] = std::byte(n);
-        return output;
-    }
-
-    for (uint8_t byte_idx = 0; byte_idx < sizeof(I); byte_idx++) {
-        size_t shift_size = byte_idx * 8;
-        I mask = 0xff;
-        mask <<= shift_size;
-        I val = n & mask;
-        val >>= shift_size;
-        output[byte_idx] = std::byte(val);
-    }
-
-    return output;
-}
 
 struct PacketView
 {
