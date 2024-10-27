@@ -11,18 +11,18 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <type_traits>
 #include <vector>
 
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 
+#include <xnet/ByteOrder.hh>
 #include <xnet/IPv4.hh>
 
-namespace xnet::dhcp {
+namespace xnet::DHCP {
 
-inline constexpr size_t header_size = []() {
+constexpr size_t header_size = []() {
     size_t output = 0;
     output += 1;   // Message op code
     output += 1;   // Hardware address type
@@ -41,104 +41,6 @@ inline constexpr size_t header_size = []() {
     return output;
 }();
 
-struct PacketView
-{
-    PacketView(std::span<const std::byte> data) : m_data(data)
-    {
-    }
-
-#if 0
-    static std::span<uint8_t> trim_options(std::span<uint8_t> options_data)
-    {
-        if (options_data.size() == 0) {
-            return options_data;
-        }
-
-        size_t options_size = options_data.size();
-        while (options_size != 0 && options_data[options_size - 1] == 0) {
-            options_size--;
-        }
-
-        return options_data.subspan(0, options_size);
-    }
-#endif
-
-    bool validate_header() const
-    {
-        return headers().has_value();
-    }
-
-    std::optional<std::span<const std::byte, header_size>> headers() const
-    {
-        if (m_data.size() < header_size) {
-            return std::nullopt;
-        }
-
-        return std::span<const std::byte, header_size>(
-            m_data.template subspan<0, header_size>());
-    }
-
-    std::optional<std::span<const std::byte>> options() const
-    {
-        if (!validate_header()) {
-            return std::nullopt;
-        }
-
-        std::span<const std::byte> options_data = m_data.subspan(header_size);
-        if (options_data.size() < 4) {
-            return std::nullopt;
-        }
-
-        std::array<uint8_t, 4> cookie_data{};
-        std::ranges::copy(
-            options_data | std::views::take(4) |
-                std::views::transform(std::to_integer<uint8_t>),
-            std::begin(cookie_data));
-        std::array<uint8_t, 4> valid_cookie_data{99, 130, 83, 99};
-
-        if (valid_cookie_data != cookie_data) {
-            return std::nullopt;
-        }
-
-        auto output = options_data.subspan(4);
-        if (!validate_options(output)) {
-            return std::nullopt;
-        }
-
-        return output;
-    }
-
-  private:
-    std::span<const std::byte> m_data;
-
-    static bool validate_options(std::span<const std::byte> options_data)
-    {
-        size_t read_offset = 0;
-        while (read_offset != options_data.size()) {
-            if (read_offset > options_data.size()) {
-                return false;
-            }
-
-            const uint8_t op_code =
-                std::to_integer<uint8_t>(options_data[read_offset]);
-
-            switch (op_code) {
-            case 0:
-            case 0xff:
-                read_offset++;
-                continue;
-            }
-
-            const uint8_t op_size = std::to_integer<uint8_t>(
-                options_data[read_offset + sizeof(op_code)]);
-            read_offset += sizeof(op_code) + sizeof(op_size);
-            read_offset += op_size;
-        }
-
-        return true;
-    }
-};
-
 enum class OperationCode
 {
     BOOTREQUEST,
@@ -147,9 +49,10 @@ enum class OperationCode
 
 struct ClientHardwareAddr
 {
-    ClientHardwareAddr() = default;
+    constexpr ClientHardwareAddr() = default;
 
-    ClientHardwareAddr(const std::array<std::byte, 16> &data) : m_data(data)
+    constexpr ClientHardwareAddr(const std::array<std::byte, 16> &data)
+        : m_data(data)
     {
     }
 
@@ -173,95 +76,66 @@ struct ClientHardwareAddr
 
 struct Header
 {
-    OperationCode op{};
-    uint8_t htype{};
-    uint8_t hlen{};
-    uint8_t hops{};
-    uint32_t xid{};
-    uint16_t secs{};
-    uint16_t flags{};
-    xnet::IPv4::Address ciaddr{};
-    xnet::IPv4::Address yiaddr{};
-    xnet::IPv4::Address siaddr{};
-    xnet::IPv4::Address giaddr{};
-    ClientHardwareAddr chaddr{};
-    std::array<char, 64> sname{};
-    std::array<char, 128> file{};
-
-    bool is_sname_valid() const
-    {
-        return std::ranges::any_of(sname, [](char c) { return c == 0; });
-    }
-
-    std::string sname_string() const
-    {
-        if (not is_sname_valid()) {
-            throw std::runtime_error("Non zero terminated dhcp::Header::sname");
-        }
-        return std::string(sname.data());
-    }
-
-    bool is_file_valid() const
-    {
-        return std::ranges::any_of(file, [](char c) { return c == 0; });
-    }
-
-    std::string file_string() const
-    {
-        if (not is_file_valid()) {
-            throw std::runtime_error("Non zero terminated dhcp::Header::file");
-        }
-        return std::string(file.data());
-    }
+    uint8_t op;
+    uint8_t htype;
+    uint8_t hlen;
+    uint8_t hops;
+    uint32_t xid;
+    uint16_t secs;
+    uint16_t flags;
+    xnet::IPv4::Address ciaddr;
+    xnet::IPv4::Address yiaddr;
+    xnet::IPv4::Address siaddr;
+    xnet::IPv4::Address giaddr;
+    ClientHardwareAddr chaddr;
+    std::array<std::byte, 64> sname;
+    std::array<std::byte, 128> file;
 };
 
-inline std::vector<std::byte> serialize(const Header &h)
+constexpr std::array<std::byte, header_size> serialize(const Header &h)
 {
     using B = std::byte;
-    std::vector<std::byte> output;
+    std::array<std::byte, header_size> output;
+    uint16_t write_offset = 0;
+    auto write_array = [&output, &write_offset]<typename T, size_t S>(
+                           const std::array<T, S> &a) {
+        auto make_byte = [](T c) { return std::byte(c); };
+        std::ranges::copy(
+            a | std::views::transform(make_byte),
+            output.begin() + write_offset);
+        write_offset += a.size();
+    };
 
-    output.reserve(header_size);
-
-    switch (h.op) {
-        using enum OperationCode;
-    case BOOTREQUEST:
-        output.push_back(B(1));
-        break;
-    case BOOTREPLY:
-        output.push_back(B(2));
-        break;
-    }
-
-    output.push_back(B(h.htype));
-    output.push_back(B(h.hlen));
-    output.push_back(B(h.hops));
-
-    std::ranges::copy(htobe<uint32_t>(h.xid), std::back_inserter(output));
-    std::ranges::copy(htobe<uint16_t>(h.secs), std::back_inserter(output));
-    std::ranges::copy(htobe<uint16_t>(h.flags), std::back_inserter(output));
-    std::ranges::copy(h.ciaddr.data_msbf(), std::back_inserter(output));
-    std::ranges::copy(h.yiaddr.data_msbf(), std::back_inserter(output));
-    std::ranges::copy(h.siaddr.data_msbf(), std::back_inserter(output));
-    std::ranges::copy(h.giaddr.data_msbf(), std::back_inserter(output));
-    std::ranges::copy(h.chaddr.data(), std::back_inserter(output));
-
-    auto make_byte = [](char c) { return std::byte(c); };
-
-    std::ranges::copy(
-        h.sname | std::views::transform(make_byte), std::back_inserter(output));
-    std::ranges::copy(
-        h.file | std::views::transform(make_byte), std::back_inserter(output));
+    write_array(htobe<uint8_t>(h.op));
+    write_array(htobe<uint8_t>(h.htype));
+    write_array(htobe<uint8_t>(h.hlen));
+    write_array(htobe<uint8_t>(h.hops));
+    write_array(htobe<uint32_t>(h.xid));
+    write_array(htobe<uint16_t>(h.secs));
+    write_array(htobe<uint16_t>(h.flags));
+    write_array(h.ciaddr.data_msbf());
+    write_array(h.yiaddr.data_msbf());
+    write_array(h.siaddr.data_msbf());
+    write_array(h.giaddr.data_msbf());
+    write_array(h.chaddr.data());
+    write_array(h.sname);
+    write_array(h.file);
 
     return output;
 }
 
 struct HeaderView
 {
-    HeaderView(std::span<const std::byte> data) : m_msg(data)
+    constexpr HeaderView(std::span<const std::byte> data) : m_data(data)
     {
     }
 
-    std::optional<Header> parse() const
+    constexpr bool not_safe_to_parse() const
+    {
+        return m_data.size() < header_size;
+    }
+
+    constexpr std::optional<Header> parse() const
     {
         auto op_opt = op();
         auto htype_opt = htype();
@@ -316,182 +190,227 @@ struct HeaderView
         return output;
     }
 
-    std::optional<OperationCode> op() const
+    constexpr std::optional<uint8_t> op() const
     {
-        auto op_val = read_be_at<uint8_t>(0);
-        if (!op_val) {
-            return std::nullopt;
-        }
-
-        switch (op_val.value()) {
-            using enum OperationCode;
-        case 1:
-            return BOOTREQUEST;
-        case 2:
-            return BOOTREPLY;
-        }
-
-        return std::nullopt;
+        return read_be_at<uint8_t>(0);
     }
 
-    std::optional<uint8_t> htype() const
+    constexpr std::optional<uint8_t> htype() const
     {
         return read_be_at<uint8_t>(1);
     }
 
-    std::optional<uint8_t> hlen() const
+    constexpr std::optional<uint8_t> hlen() const
     {
         return read_be_at<uint8_t>(2);
     }
 
-    std::optional<uint8_t> hops() const
+    constexpr std::optional<uint8_t> hops() const
     {
         return read_be_at<uint8_t>(3);
     }
 
-    std::optional<uint32_t> xid() const
+    constexpr std::optional<uint32_t> xid() const
     {
         return read_be_at<uint32_t>(4);
     }
 
-    std::optional<uint16_t> secs() const
+    constexpr std::optional<uint16_t> secs() const
     {
         return read_be_at<uint16_t>(8);
     }
 
-    std::optional<uint16_t> flags() const
+    constexpr std::optional<uint16_t> flags() const
     {
         return read_be_at<uint16_t>(10);
     }
 
-    std::optional<xnet::IPv4::Address> ciaddr() const
+    constexpr std::optional<xnet::IPv4::Address> ciaddr() const
     {
         return read_ipv4_addr_at(12);
     }
 
-    std::optional<xnet::IPv4::Address> yiaddr() const
+    constexpr std::optional<xnet::IPv4::Address> yiaddr() const
     {
         return read_ipv4_addr_at(16);
     }
 
-    std::optional<xnet::IPv4::Address> siaddr() const
+    constexpr std::optional<xnet::IPv4::Address> siaddr() const
     {
         return read_ipv4_addr_at(20);
     }
 
-    std::optional<xnet::IPv4::Address> giaddr() const
+    constexpr std::optional<xnet::IPv4::Address> giaddr() const
     {
         return read_ipv4_addr_at(24);
     }
 
-    std::optional<ClientHardwareAddr> chaddr() const
+    constexpr std::optional<ClientHardwareAddr> chaddr() const
     {
-        auto ho = m_msg.headers();
-        if (!ho) {
+        if (not_safe_to_parse()) {
             return std::nullopt;
         }
-        auto header = ho.value();
-
         std::array<std::byte, 16> addr_data{};
-
-        std::ranges::copy(header.subspan(28, 16), std::begin(addr_data));
-
+        std::ranges::copy(m_data.subspan(28, 16), std::begin(addr_data));
         return ClientHardwareAddr(addr_data);
     }
 
-    std::optional<std::array<char, 64>> sname() const
+    constexpr std::optional<std::array<std::byte, 64>> sname() const
     {
-        auto ho = m_msg.headers();
-        if (!ho) {
+        if (not_safe_to_parse()) {
             return std::nullopt;
         }
-        auto header = ho.value();
-        std::array<char, 64> output{};
-
-        std::ranges::copy(
-            header.subspan(44, 64) |
-                std::views::transform(std::to_integer<char>),
-            std::begin(output));
-
-        if (std::ranges::none_of(output, [](char b) { return b == 0; })) {
-            return std::nullopt;
-        }
-
+        std::array<std::byte, 64> output{};
+        std::ranges::copy(m_data.subspan(44, 64), std::begin(output));
         return output;
     }
 
-    std::optional<std::string> sname_string() const
+    constexpr std::optional<std::array<std::byte, 128>> file() const
     {
-        auto sname_data_op = sname();
-        if (!sname_data_op) {
+        if (not_safe_to_parse()) {
             return std::nullopt;
         }
-        auto sname_data = sname_data_op.value();
-        return std::string(sname_data.data());
-    }
-
-    std::optional<std::array<char, 128>> file() const
-    {
-        auto ho = m_msg.headers();
-        if (!ho) {
-            return std::nullopt;
-        }
-        auto header = ho.value();
-        std::array<char, 128> output{};
-
-        std::ranges::copy(
-            header.subspan(108, 128) |
-                std::views::transform(std::to_integer<char>),
-            std::begin(output));
-
-        if (std::ranges::none_of(output, [](char b) { return b == 0; })) {
-            return std::nullopt;
-        }
-
+        std::array<std::byte, 128> output{};
+        std::ranges::copy(m_data.subspan(108, 128), std::begin(output));
         return output;
-    }
-
-    std::optional<std::string> file_string() const
-    {
-        auto sname_data_op = file();
-        if (!sname_data_op) {
-            return std::nullopt;
-        }
-        auto sname_data = sname_data_op.value();
-        return std::string(sname_data.data());
     }
 
   private:
-    PacketView m_msg;
+    std::span<const std::byte> m_data;
 
     template <std::unsigned_integral I>
-    std::optional<I> read_be_at(size_t offset) const
+    constexpr std::optional<I> read_be_at(size_t offset) const
     {
-        auto ho = m_msg.headers();
-        if (!ho) {
+        if (not_safe_to_parse()) {
             return std::nullopt;
         }
 
-        auto output_data = ho.value().subspan(offset, sizeof(I));
-
-        I output = 0;
-        for (std::byte b : output_data) {
-            if constexpr (sizeof(I) != 1) {
-                output <<= 8;
-            }
-            output |= std::to_integer<I>(b);
-        }
-        return output;
+        std::array<std::byte, sizeof(I)> output_data;
+        std::ranges::copy(
+            m_data.subspan(offset, sizeof(I)), output_data.begin());
+        return betoh<I>(output_data);
     }
 
-    std::optional<xnet::IPv4::Address> read_ipv4_addr_at(size_t offset) const
+    constexpr std::optional<xnet::IPv4::Address>
+        read_ipv4_addr_at(size_t offset) const
     {
-        auto be_addr = read_be_at<uint32_t>(offset);
-        if (!be_addr.has_value()) {
+        if (not_safe_to_parse()) {
             return std::nullopt;
         }
-        return xnet::IPv4::Address::from_msbf(be_addr.value());
+        std::array<std::byte, 4> addr_data;
+        std::ranges::copy(m_data.subspan(offset, 4), addr_data.begin());
+        return xnet::IPv4::Address(addr_data);
     }
 };
 
-} // namespace dhcp
+struct PacketView
+{
+    constexpr PacketView(std::span<const std::byte> data) : m_data(data)
+    {
+    }
+
+    constexpr std::optional<HeaderView> header_view() const
+    {
+        auto header = header_data();
+        if (!header.has_value()) {
+            return std::nullopt;
+        }
+
+        return HeaderView(header.value());
+    }
+
+  private:
+#if 0
+    static constexpr std::span<uint8_t> trim_options(std::span<uint8_t> options_data)
+    {
+        if (options_data.size() == 0) {
+            return options_data;
+        }
+
+        size_t options_size = options_data.size();
+        while (options_size != 0 && options_data[options_size - 1] == 0) {
+            options_size--;
+        }
+
+        return options_data.subspan(0, options_size);
+    }
+#endif
+
+    constexpr bool validate_header() const
+    {
+        return header_data().has_value();
+    }
+
+    constexpr std::optional<std::span<const std::byte, header_size>>
+        header_data() const
+    {
+        if (m_data.size() < header_size) {
+            return std::nullopt;
+        }
+
+        return std::span<const std::byte, header_size>(
+            m_data.template subspan<0, header_size>());
+    }
+
+    constexpr std::optional<std::span<const std::byte>> options_data() const
+    {
+        if (!validate_header()) {
+            return std::nullopt;
+        }
+
+        std::span<const std::byte> options_data = m_data.subspan(header_size);
+        if (options_data.size() < 4) {
+            return std::nullopt;
+        }
+
+        std::array<uint8_t, 4> cookie_data{};
+        std::ranges::copy(
+            options_data | std::views::take(4) |
+                std::views::transform(std::to_integer<uint8_t>),
+            std::begin(cookie_data));
+        std::array<uint8_t, 4> valid_cookie_data{99, 130, 83, 99};
+        if (valid_cookie_data != cookie_data) {
+            return std::nullopt;
+        }
+
+        auto output = options_data.subspan(4);
+        if (!validate_options(output)) {
+            return std::nullopt;
+        }
+
+        return output;
+    }
+
+  private:
+    std::span<const std::byte> m_data;
+
+    static constexpr bool
+        validate_options(std::span<const std::byte> options_data)
+    {
+        size_t read_offset = 0;
+        while (read_offset != options_data.size()) {
+            if (read_offset > options_data.size()) {
+                return false;
+            }
+
+            const uint8_t op_code =
+                std::to_integer<uint8_t>(options_data[read_offset]);
+
+            switch (op_code) {
+            case 0:
+            case 0xff:
+                read_offset++;
+                continue;
+            }
+
+            const uint8_t op_size = std::to_integer<uint8_t>(
+                options_data[read_offset + sizeof(op_code)]);
+            read_offset += sizeof(op_code) + sizeof(op_size);
+            read_offset += op_size;
+        }
+
+        return true;
+    }
+};
+
+} // namespace xnet::DHCP

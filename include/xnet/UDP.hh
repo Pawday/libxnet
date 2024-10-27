@@ -9,7 +9,13 @@
 #include <cstdint>
 #include <cstring>
 
-struct UDPHeader
+namespace xnet {
+
+namespace UDP {
+
+static constexpr uint8_t header_size = 8;
+
+struct Header
 {
     uint16_t source_port;
     uint16_t destination_port;
@@ -17,20 +23,20 @@ struct UDPHeader
     uint16_t checksumm;
 };
 
-struct UDPPacketView
+struct PacketView
 {
-    UDPPacketView(std::span<const std::byte> data) : m_data(data)
+    PacketView(std::span<const std::byte> data) : m_data(data)
     {
     }
 
-    std::optional<UDPHeader> header() const
+    std::optional<Header> parse_header() const
     {
-        if (m_data.size() < udp_header_size) {
+        if (m_data.size() < header_size) {
             return std::nullopt;
         }
 
         std::array<uint16_t, 4> readen_u16s{};
-        for (uint8_t u16_idx = 0; u16_idx < udp_header_size / sizeof(uint16_t);
+        for (uint8_t u16_idx = 0; u16_idx < header_size / sizeof(uint16_t);
              u16_idx++) {
             auto val_be =
                 m_data.subspan(u16_idx * sizeof(uint16_t), sizeof(uint16_t));
@@ -43,45 +49,43 @@ struct UDPPacketView
             readen_u16s[u16_idx] = val;
         }
 
-        UDPHeader output;
+        auto size = readen_u16s[2];
+        if (size < header_size) {
+            return std::nullopt;
+        }
+
+        Header output;
         output.source_port = readen_u16s[0];
         output.destination_port = readen_u16s[1];
-        output.length = readen_u16s[2];
+        output.length = size;
         output.checksumm = readen_u16s[3];
         return output;
     }
 
     std::optional<std::span<const std::byte>> payload() const
     {
-        auto header_opt = header();
+        auto header_opt = parse_header();
         if (!header_opt) {
             return std::nullopt;
         }
 
         auto udp_header = header_opt.value();
-        if (udp_header.length < udp_header_size) {
-            assert(false && "UDPPacketView::header().length screwed");
+        if (udp_header.length < header_size) {
+            assert(false && "parse_header screwed");
             return std::nullopt;
         }
 
-        uint16_t payload_len = udp_header.length - udp_header_size;
+        uint16_t payload_len = udp_header.length - header_size;
 
-        if (m_data.size() < udp_header_size) {
-            assert(
-                false &&
-                "Unexpected m_data span size change after reading header");
+        if ((m_data.size() - header_size) < payload_len) {
             return std::nullopt;
         }
 
-        if ((m_data.size() - udp_header_size) < payload_len) {
-            return std::nullopt;
-        }
-
-        return m_data.subspan(udp_header_size, payload_len);
+        return m_data.subspan(header_size, payload_len);
     }
 
   private:
-    static constexpr uint8_t udp_header_size = 8;
-
     std::span<const std::byte> m_data;
 };
+} // namespace UDP
+} // namespace xnet

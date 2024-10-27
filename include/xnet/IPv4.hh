@@ -19,23 +19,25 @@
 
 namespace xnet::IPv4 {
 
+constexpr size_t minimal_header_size = []() {
+    size_t output_bits = 0;
+    output_bits += 4;  // Version
+    output_bits += 4;  // IHL
+    output_bits += 8;  // TOS
+    output_bits += 16; // Total length
+    output_bits += 16; // Identification
+    output_bits += 3;  // Flags
+    output_bits += 13; // Fragment Offset
+    output_bits += 8;  // TTL
+    output_bits += 8;  // Protocol
+    output_bits += 16; // Header Checksum
+    output_bits += 32; // Source Address
+    output_bits += 32; // Destination Address
+    return output_bits / 8;
+}();
+
 struct Address
 {
-    static constexpr Address from_msbf(uint32_t addr)
-    {
-        std::array<uint8_t, 4> m_data{};
-
-        for (uint8_t offset = 0; offset < 4; offset++) {
-            uint32_t view = addr;
-            uint32_t temp = addr;
-            temp >>= (24 - offset * 8);
-            temp &= 0xff;
-            m_data[offset] = temp;
-        }
-
-        return Address(m_data);
-    }
-
     constexpr Address() = default;
 
     constexpr Address(std::array<std::byte, 4> data) : m_data(data) {};
@@ -57,7 +59,7 @@ struct Address
         return l.m_data == r.m_data;
     }
 
-    std::array<std::byte, 4> data_msbf() const
+    constexpr std::array<std::byte, 4> data_msbf() const
     {
         return m_data;
     }
@@ -71,13 +73,57 @@ constexpr bool operator==(const Address &l, const Address &r)
     return Address::equals(l, r);
 }
 
+struct Flags
+{
+    constexpr Flags() : m_val(0)
+    {
+    }
+
+    constexpr Flags(uint8_t val) : m_val(val)
+    {
+    }
+
+    constexpr uint8_t value() const
+    {
+        return m_val;
+    }
+
+    constexpr bool more_fragments() const
+    {
+        return (0b001 & m_val) != 0;
+    }
+
+    constexpr bool dont_fragment() const
+    {
+        return (0b010 & m_val) != 0;
+    }
+
+    constexpr bool reserved() const
+    {
+        return (0b100 & m_val) != 0;
+    }
+
+    constexpr bool may_fragment() const
+    {
+        return !dont_fragment();
+    }
+
+    constexpr bool last_fragment() const
+    {
+        return !more_fragments();
+    }
+
+  private:
+    uint8_t m_val : 3;
+};
+
 struct Header
 {
     uint8_t header_size;
-    uint8_t type_of_service;
+    uint8_t TOS_or_DS; // TypeOfService or Differentiated Services
     uint16_t total_size;
     uint16_t identification;
-    uint8_t flags : 3;
+    Flags flags;
     uint16_t fragment_offset : 13;
     uint8_t time_to_live;
     uint8_t protocol;
@@ -86,38 +132,21 @@ struct Header
     Address destination_address;
 };
 
-constexpr size_t minimal_header_size = []() {
-    size_t output_bits = 0;
-    output_bits += 4;  // Version
-    output_bits += 4;  // IHL
-    output_bits += 8;  // TOS
-    output_bits += 16; // Total length
-    output_bits += 16; // Identification
-    output_bits += 3;  // Flags
-    output_bits += 13; // Fragment Offset
-    output_bits += 8;  // TTL
-    output_bits += 8;  // Protocol
-    output_bits += 16; // Header Checksum
-    output_bits += 32; // Source Address
-    output_bits += 32; // Destination Address
-    return output_bits / 8;
-}();
-
 constexpr std::array<std::byte, minimal_header_size> serialize(const Header &h)
 {
     uint8_t proto_header_size = h.header_size / sizeof(uint32_t);
     uint8_t ver_ihl = 0b01000000;
     ver_ihl |= proto_header_size;
 
-    uint16_t flags_fragm_val = h.flags;
+    uint16_t flags_fragm_val = h.flags.value();
     // 0b0000000000000xxx -> 0bxxx0000000000000
     flags_fragm_val <<= 13;
     flags_fragm_val &= 0b1110000000000000;
+
     flags_fragm_val |= h.fragment_offset;
 
     std::array<std::byte, minimal_header_size> output{};
     uint16_t write_offset = 0;
-
     auto write_array =
         [&output, &write_offset]<size_t S>(const std::array<std::byte, S> &a) {
             std::copy(a.begin(), a.end(), output.begin() + write_offset);
@@ -125,7 +154,7 @@ constexpr std::array<std::byte, minimal_header_size> serialize(const Header &h)
         };
 
     write_array(htobe<uint8_t>(ver_ihl));
-    write_array(htobe<uint8_t>(h.type_of_service));
+    write_array(htobe<uint8_t>(h.TOS_or_DS));
     write_array(htobe<uint16_t>(h.total_size));
     write_array(htobe<uint16_t>(h.identification));
     write_array(htobe<uint16_t>(flags_fragm_val));
@@ -164,7 +193,7 @@ struct HeaderView
 
         Header output;
         output.header_size = header_size;
-        output.type_of_service = type_of_service;
+        output.TOS_or_DS = type_of_service;
         output.total_size = total_size;
         output.identification = identification;
         output.flags = flags;
@@ -179,7 +208,7 @@ struct HeaderView
 
     constexpr std::optional<uint16_t> compute_checksum() const
     {
-        if (is_not_valid()) {
+        if (is_not_safe_to_parse()) {
             return std::nullopt;
         }
 
@@ -370,6 +399,7 @@ struct HeaderView
 
         uint32_t nb_carry = carry_sum & 0xffff0000;
         nb_carry >>= (sizeof(uint16_t) * 8);
+        nb_carry &= 0xffff;
 
         uint16_t sum = carry_sum & 0xffff;
         sum += nb_carry;
@@ -494,6 +524,12 @@ struct HeaderView
         return ~output;
     }
 };
+
+constexpr uint16_t compute_checksum(const Header &H)
+{
+    std::array<std::byte, minimal_header_size> data = serialize(H);
+    return HeaderView(std::span(data)).compute_checksum().value();
+}
 
 struct PacketView
 {

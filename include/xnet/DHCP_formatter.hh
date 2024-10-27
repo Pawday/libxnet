@@ -5,6 +5,7 @@
 #include <bitset>
 #include <format>
 #include <iterator>
+#include <ranges>
 #include <string>
 
 #include <cctype>
@@ -15,7 +16,7 @@
 #include "DHCP.hh"
 
 template <>
-struct std::formatter<xnet::dhcp::OperationCode, char>
+struct std::formatter<xnet::DHCP::OperationCode, char>
 {
     template <class ParseContext>
     constexpr ParseContext::iterator parse(ParseContext &ctx)
@@ -25,12 +26,12 @@ struct std::formatter<xnet::dhcp::OperationCode, char>
 
     template <typename FmtContext>
     constexpr auto
-        format(const xnet::dhcp::OperationCode &code, FmtContext &ctx) const
+        format(const xnet::DHCP::OperationCode &code, FmtContext &ctx) const
     {
         auto output = ctx.out();
 
         switch (code) {
-            using enum xnet::dhcp::OperationCode;
+            using enum xnet::DHCP::OperationCode;
         case BOOTREQUEST:
             return std::format_to(output, "BOOTREQUEST");
         case BOOTREPLY:
@@ -42,7 +43,7 @@ struct std::formatter<xnet::dhcp::OperationCode, char>
 };
 
 template <>
-struct std::formatter<xnet::dhcp::ClientHardwareAddr, char>
+struct std::formatter<xnet::DHCP::ClientHardwareAddr, char>
 {
     template <class ParseContext>
     constexpr ParseContext::iterator parse(ParseContext &ctx)
@@ -51,7 +52,8 @@ struct std::formatter<xnet::dhcp::ClientHardwareAddr, char>
     }
 
     template <typename FmtContext>
-    auto format(const xnet::dhcp::ClientHardwareAddr &addr, FmtContext &ctx) const
+    auto format(
+        const xnet::DHCP::ClientHardwareAddr &addr, FmtContext &ctx) const
     {
         auto output = ctx.out();
 
@@ -72,7 +74,7 @@ struct std::formatter<xnet::dhcp::ClientHardwareAddr, char>
 };
 
 template <>
-struct std::formatter<xnet::dhcp::Header, char>
+struct std::formatter<xnet::DHCP::Header, char>
 {
     template <class ParseContext>
     constexpr ParseContext::iterator parse(ParseContext &ctx)
@@ -81,14 +83,14 @@ struct std::formatter<xnet::dhcp::Header, char>
     }
 
     template <typename FmtContext>
-    auto format(const xnet::dhcp::Header /* not & */ header, FmtContext &ctx) const
+    auto format(const xnet::DHCP::Header &header, FmtContext &ctx) const
     {
         auto output = ctx.out();
 
         constexpr size_t sname_data_size =
-            std_array_size_v<decltype(xnet::dhcp::Header::sname)>;
+            std_array_size_v<decltype(xnet::DHCP::Header::sname)>;
         constexpr size_t file_data_size =
-            std_array_size_v<decltype(xnet::dhcp::Header::file)>;
+            std_array_size_v<decltype(xnet::DHCP::Header::file)>;
 
         constexpr size_t sname_data_string_size =
             sname_data_size * (sizeof("xx") - 1) /* each byte as string */
@@ -100,42 +102,15 @@ struct std::formatter<xnet::dhcp::Header, char>
             + file_data_size - 1                /* comma between */
             + 1 /* zero term */;
 
-        std::array<char, sname_data_string_size> sname_arr_stringify{};
-        std::array<char, file_data_string_size> file_arr_stringify{};
-
-        auto sname_string_it = std::begin(sname_arr_stringify);
-
-        bool first = true;
-        for (auto sname_byte : header.sname) {
-            if (!first) {
-                sname_string_it = std::format_to(sname_string_it, " ");
-            }
-            first = false;
-            sname_string_it =
-                std::format_to(sname_string_it, "{:02x}", sname_byte);
-        }
-
-        auto file_string_it = std::begin(file_arr_stringify);
-        first = true;
-        for (auto file_name_byte : header.file) {
-            if (!first) {
-                file_string_it = std::format_to(sname_string_it, " ");
-            }
-            first = false;
-            sname_string_it =
-                std::format_to(file_string_it, "{:02x}", file_name_byte);
-        }
-
-        std::string sname_string_ascii = "";
-        if (header.is_sname_valid()) {
-            sname_string_ascii = header.sname_string();
-        }
-
         auto json_pritify = [](char &c) {
             switch (c) {
             case '\"':
             case '\\':
                 c = '.';
+                return;
+            }
+
+            if (c == '\0') {
                 return;
             }
 
@@ -145,18 +120,26 @@ struct std::formatter<xnet::dhcp::Header, char>
             c = '.';
         };
 
+        constexpr size_t sname_size = xnet::DHCP::Header().sname.size();
+        std::array<char, sname_size + 1> sname_string_ascii{};
+        std::ranges::copy(
+            header.sname | std::views::transform(std::to_integer<char>),
+            std::begin(sname_string_ascii));
         std::ranges::for_each(sname_string_ascii, json_pritify);
+        sname_string_ascii.back() = '\0';
 
-        std::string file_string_ascii = "";
-        if (header.is_file_valid()) {
-            file_string_ascii = header.file_string();
-        }
+        constexpr size_t file_size = xnet::DHCP::Header().file.size();
+        std::array<char, file_size + 1> file_string_ascii{};
+        std::ranges::copy(
+            header.file | std::views::transform(std::to_integer<char>),
+            std::begin(file_string_ascii));
         std::ranges::for_each(file_string_ascii, json_pritify);
+        file_string_ascii.back() = '\0';
 
         output = std::format_to(
             output,
             "{{"
-            "\"op\":\"{}\""
+            "\"op\":{}"
             ","
             "\"htype\":\"0x{:x}\""
             ","
@@ -164,29 +147,25 @@ struct std::formatter<xnet::dhcp::Header, char>
             ","
             "\"hops\":{}"
             ","
-            "\"xid\":\"0x{:x}\""
+            "\"transaction_id\":\"0x{:x}\""
             ","
             "\"secs\":{}"
             ","
             "\"flags\":\"0b{}\""
             ","
-            "\"ciaddr\":\"{}\""
+            "\"cli\":{}"
             ","
-            "\"yiaddr\":\"{}\""
+            "\"your\":{}"
             ","
-            "\"siaddr\":\"{}\""
+            "\"server\":{}"
             ","
-            "\"giaddr\":\"{}\""
+            "\"relay\":{}"
             ","
-            "\"chaddr\":\"{}\""
+            "\"cli_hw\":\"{}\""
             ","
-            "\"sname_string_ascii\":\"{}\""
+            "\"sname_ascii\":\"{}\""
             ","
-            "\"file_string_ascii\":\"{}\""
-            ","
-            "\"sname\":\"{}\""
-            ","
-            "\"file\":\"{}\""
+            "\"file_ascii\":\"{}\""
             "}}",
             header.op,
             header.htype,
@@ -200,10 +179,8 @@ struct std::formatter<xnet::dhcp::Header, char>
             header.siaddr,
             header.giaddr,
             header.chaddr,
-            sname_string_ascii,
-            file_string_ascii,
-            sname_arr_stringify.data(),
-            file_arr_stringify.data());
+            sname_string_ascii.data(),
+            file_string_ascii.data());
         return output;
     }
 
